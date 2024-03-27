@@ -15,6 +15,18 @@ let movePrompt = [
     }
 ];
 
+let playAgainPromt = [
+    {
+        type: 'list',
+        name: 'playAgain',
+        message: 'Do you want to play again?',
+        choices: ['Yes', 'No'],
+        filter(val) {
+            return val == 'Yes' ? true : false;
+        }
+    }
+]
+
 
 
 
@@ -47,6 +59,14 @@ connection.on('open', () => {
 connection.on('message', async (message) => {
     try {
         const data = JSON.parse(message);
+
+        if (data.promptPlayAgain) {
+            const playAgainResponse = await inquirer.prompt(playAgainPromt);
+            connection.send(JSON.stringify({playAgain: playAgainResponse.playAgain}));
+            return;
+        }
+
+        if (data.newGame) chess = new Chess();
 
         // Not waiting (meaning it is your move) and there is a game in progress
         if (!data.waiting && data.gameInProgress) {
