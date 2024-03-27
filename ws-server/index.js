@@ -4,6 +4,7 @@ const { Chess } = require('chess.js')
 
 let connectedClients = 0;
 
+
 // Returns 0 or 1 (white or black)
 function randomizeColor() {
     return Math.floor(Math.random() * 2); 
@@ -12,11 +13,13 @@ function randomizeColor() {
 const gameState = {
     player1: {
         color: undefined,
-        ws: undefined
+        ws: undefined,
+        rematchAgree: false
     },
     player2: {
         color: undefined,
-        ws: undefined
+        ws: undefined, 
+        rematchAgree: false
     },
     game: undefined,
 }
@@ -26,6 +29,18 @@ const data = {
     waiting: true, // Waiting if there are not 2 players
     message: undefined,
 };
+
+
+function rematchOpponents() {
+    
+    // Reverse colors
+    gameState.player1.color = gameState.player1.color == "w" ? "b" : "w";
+    gameState.player2.color = gameState.player2.color == "w" ? "b" : "w";
+
+    // Reset board
+    gameState.game = new Chess();
+    data.gameInProgress = true;
+}
 
 sockserver.on('connection', ws => {
 
@@ -61,7 +76,6 @@ sockserver.on('connection', ws => {
         let color2 = color1 == "b" ? "w" : "b";
         gameState.game = new Chess();
         data.gameInProgress = true;
-        console.log(gameState, color1, color2);
 
         sockserver.clients.forEach((client) => {
             if (client !== ws && client.readyState === WebSocket.OPEN) {
@@ -104,7 +118,52 @@ sockserver.on('connection', ws => {
     //          However, start with just finishing a game (isGameOver).
     ws.on('message', (message) => {
         try {
-            let { move } = JSON.parse(message);
+            let clientMessage = JSON.parse(message)
+
+
+            // Reading prompt if users want to play again
+            if (!data.gameInProgress && typeof clientMessage.playAgain == typeof Boolean()) {
+                
+                if (clientMessage.playAgain) {
+                    if (ws == gameState.player1.ws) gameState.player1.rematchAgree = true; 
+                    else if (ws == gameState.player2.ws) gameState.player2.rematchAgree = true;
+                    if (gameState.player1.rematchAgree && gameState.player2.rematchAgree) {
+                        rematchOpponents();
+                        sockserver.client.forEach(client => {
+                            if (client !== ws && client.readyState === WebSocket.OPEN) {
+                                data.message = "Game started!\nWaiting for you opponent to move...";
+                                data.waiting = true;
+                                
+                                if (gameState.player1.color == 'w') { 
+                                    data.message = "Your move!"
+                                    data.waiting = false;
+                                }
+                
+                                client.send(JSON.stringify(data));
+                            } 
+                            else if (client === ws && client.readyState === WebSocket.OPEN) {                                
+                                if (gameState.player2.color == 'w') { 
+                                    data.message = "Your move!"
+                                    data.waiting = false;
+                                }
+                                
+                                client.send(JSON.stringify(data));
+                            }
+                        })
+                        return;
+                    }
+                }
+                else {
+                    sockserver.clients.forEach(client => {
+                        client.send(JSON.stringify({message: "Rematch declined.\nDisconnecting you from server..."}))
+                        connectedClients--;
+                        client.close();
+                        return;
+                    })
+                }
+            }
+
+            let { move } = clientMessage;
             gameState.game.move(move);
             console.log(gameState.game.ascii());
 
@@ -121,6 +180,9 @@ sockserver.on('connection', ws => {
                 data.waiting = true;
 
                 // TODO: Give option to start a new game, reset game state, reverse colors
+                sockserver.clients.forEach((client) => {
+                    client.send(JSON.stringify({message: "Do you want to play again?", promptPlayAgain: true}))
+                })
                 return;
             }
             
