@@ -37,6 +37,10 @@ function rematchOpponents() {
     gameState.player1.color = gameState.player1.color == "w" ? "b" : "w";
     gameState.player2.color = gameState.player2.color == "w" ? "b" : "w";
 
+    //Reset rematch
+    gameState.player1.rematchAgree = false;
+    gameState.player2.rematchAgree = false;
+
     // Reset board
     gameState.game = new Chess();
     data.gameInProgress = true;
@@ -129,7 +133,9 @@ sockserver.on('connection', ws => {
                     else if (ws == gameState.player2.ws) gameState.player2.rematchAgree = true;
                     if (gameState.player1.rematchAgree && gameState.player2.rematchAgree) {
                         rematchOpponents();
-                        sockserver.client.forEach(client => {
+                        sockserver.clients.forEach(client => {
+                            // TODO: Fix this logic. client !== ws is not necessarily player1...
+                            // Might be client !== gameState.player2.ws
                             if (client !== ws && client.readyState === WebSocket.OPEN) {
                                 data.message = "Game started!\nWaiting for you opponent to move...";
                                 data.waiting = true;
@@ -139,15 +145,18 @@ sockserver.on('connection', ws => {
                                     data.waiting = false;
                                 }
                 
-                                client.send(JSON.stringify(data));
+                                client.send(JSON.stringify({...data, newGame: true}));
                             } 
-                            else if (client === ws && client.readyState === WebSocket.OPEN) {                                
+                            else if (client === ws && client.readyState === WebSocket.OPEN) {
+                                data.message = "Game started!\nWaiting for you opponent to move...";
+                                data.waiting = true;                                
                                 if (gameState.player2.color == 'w') { 
                                     data.message = "Your move!"
                                     data.waiting = false;
                                 }
                                 
-                                client.send(JSON.stringify(data));
+                                client.send(JSON.stringify({...data, newGame: true}));
+                                console.log(data);
                             }
                         })
                         return;
@@ -156,7 +165,6 @@ sockserver.on('connection', ws => {
                 else {
                     sockserver.clients.forEach(client => {
                         client.send(JSON.stringify({message: "Rematch declined.\nDisconnecting you from server..."}))
-                        connectedClients--;
                         client.close();
                         return;
                     })
@@ -164,6 +172,7 @@ sockserver.on('connection', ws => {
             }
 
             let { move } = clientMessage;
+            if (!move) return;
             gameState.game.move(move);
             console.log(gameState.game.ascii());
 
@@ -218,6 +227,10 @@ sockserver.on('connection', ws => {
         console.log('Client disconnected');
         // TODO: handle resetting a game when a client disconnects. Maybe add a handler to give 10 seconds for client to reconnect.
     });
+
+    ws.on('error', (e) => {
+        console.log("Error occurred:", e.code);
+    })
 
     console.log("New client connected");  
     console.log(`Current number of clients: ${connectedClients}`);

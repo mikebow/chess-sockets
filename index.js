@@ -44,8 +44,10 @@ const makeMove = async (move=null, fen="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQK
     }
 
     catch (e) {
+        // TODO: Somehow we keep getting to this catch block after a rematch.
         console.error(e);
-        chess = new Chess();
+        console.log(e);
+        
     }
 }
 
